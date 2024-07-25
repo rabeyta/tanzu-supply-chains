@@ -1,0 +1,49 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+    name: deployer
+spec:
+    description: Deploys K8s resources to the cluster.
+    params:
+        - default: ""
+          description: Path to the yaml to deploy
+          name: subpath
+          type: string
+        - description: Name of the kapp app to be deployed
+          name: kapp-app-name
+          type: string
+    results:
+        - name: message
+          type: string
+    stepTemplate:
+        computeResources: {}
+        securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+                drop:
+                    - ALL
+            runAsNonRoot: true
+            runAsUser: 1001
+            seccompProfile:
+                type: RuntimeDefault
+    steps:
+        - computeResources: {}
+          image: cxscssa.azurecr.io/tap-1-11-0/tap-packages@sha256:5fc35e68bfd9fc89a593ed364ec59ccd479d7eeb475382289b35ac09abec1a54
+          name: deploy-using-kubectl
+          script: |-
+            #!/bin/bash
+
+            set -euo pipefail
+
+            set +e
+            ERROR_MESSAGE="$(kapp deploy -a "$(params.kapp-app-name)" -f "$(workspaces.content.path)/$(params.subpath)" -y 2>&1 > /dev/null)"
+            deployval=$?
+            set -e
+
+            if [ $deployval -ne 0 ]; then
+              echo -e "$ERROR_MESSAGE" | tee "$(results.message.path)"
+              exit $deployval
+            fi
+    workspaces:
+        - description: The folder where the yaml is
+          name: content
